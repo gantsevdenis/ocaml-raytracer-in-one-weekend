@@ -1,0 +1,2 @@
+(executable (name main)
+(libraries tsdl tgls.tgl4 core gg tsdl-image dolog assimp))
