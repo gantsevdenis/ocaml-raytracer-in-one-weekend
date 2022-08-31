@@ -34,11 +34,11 @@ let () =
   in
   let hit_sphere (center : point_t) (radius : float) (r : ray_t) =
     let oc = V3.add o (V3.smul (-1.) center) in
-    let a = V3.dot r.dir r.dir in
-    let b = 2. *. V3.dot oc r.dir in
-    let c = V3.dot oc oc -. (radius *. radius) in
-    let discriminant = (b *. b) -. (4. *. a *. c) in
-    if discriminant < 0. then -1. else (-.b -. sqrt discriminant) /. (2. *. a)
+    let a = V3.norm2 r.dir in
+    let half_b = V3.dot oc r.dir in
+    let c = V3.norm2 oc -. (radius *. radius) in
+    let discriminant = (half_b *. half_b) -. (a *. c) in
+    if discriminant < 0. then -1. else (-.half_b -. sqrt discriminant) /. a
   in
   let ray_color (r : ray_t) : color_t =
     let center = V3.v 0. 0. (-1.) in
