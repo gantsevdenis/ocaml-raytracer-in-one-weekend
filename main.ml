@@ -4,7 +4,7 @@ type ray_t = {o: Gg.V3.t; dir: Gg.V3.t}
 
 type color_t = V3.t
 
-(* type point_t = V3.t *)
+type point_t = V3.t
 
 let make_ray o (dir : Gg.V3.t) = {o; dir}
 
@@ -30,13 +30,27 @@ let () =
     let b = Float.to_int (255.999 *. V3.z c) in
     Printf.printf "%i %i %i\n" r g b
   in
+  let hit_sphere (center : point_t) (radius : float) (r : ray_t) =
+    let oc = V3.add o (V3.smul (-1.) center) in
+    let a = V3.dot r.dir r.dir in
+    let b = 2. *. V3.dot oc r.dir in
+    let c = V3.dot oc oc -. (radius *. radius) in
+    let discriminant = (b *. b) -. (4. *. a *. c) in
+    discriminant > 0.
+  in
   let ray_color (r : ray_t) : color_t =
-    let unit_dir = V3.unit r.dir in
-    let t = 0.5 *. (V3.y unit_dir +. 1.) in
-    let t_1 = 1. -. t in
-    let light_blue = V3.v 0.5 0.7 1. in
-    let one = V3.v 1. 1. 1. in
-    V3.add (V3.smul t_1 one) (V3.smul t light_blue)
+    let center = V3.v 0. 0. (-1.) in
+    let radius = 0.5 in
+    match hit_sphere center radius r with
+    | true ->
+        V3.v 1. 0. 0.
+    | false ->
+        let unit_dir = V3.unit r.dir in
+        let t = 0.5 *. (V3.y unit_dir +. 1.) in
+        let t_1 = 1. -. t in
+        let light_blue = V3.v 0.5 0.7 1. in
+        let one = V3.v 1. 1. 1. in
+        V3.add (V3.smul t_1 one) (V3.smul t light_blue)
   in
   let write_ppm ~w ~h =
     let j = ref (h - 1) in
