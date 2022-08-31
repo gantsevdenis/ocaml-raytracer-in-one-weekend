@@ -2,6 +2,8 @@ open Gg
 
 type ray_t = {o: Gg.V3.t; dir: Gg.V3.t}
 
+let ray_at r t = V3.add r.o (V3.smul t r.dir)
+
 type color_t = V3.t
 
 type point_t = V3.t
@@ -36,21 +38,20 @@ let () =
     let b = 2. *. V3.dot oc r.dir in
     let c = V3.dot oc oc -. (radius *. radius) in
     let discriminant = (b *. b) -. (4. *. a *. c) in
-    discriminant > 0.
+    if discriminant < 0. then -1. else (-.b -. sqrt discriminant) /. (2. *. a)
   in
   let ray_color (r : ray_t) : color_t =
     let center = V3.v 0. 0. (-1.) in
     let radius = 0.5 in
     match hit_sphere center radius r with
-    | true ->
-        V3.v 1. 0. 0.
-    | false ->
+    | t when t >= 0. ->
+        let n = V3.unit (V3.sub (ray_at r t) (V3.v 0. 0. (-1.))) in
+        let c = V3.v (V3.x n +. 1.) (V3.y n +. 1.) (V3.z n +. 1.) in
+        V3.smul 0.5 c
+    | _ ->
         let unit_dir = V3.unit r.dir in
         let t = 0.5 *. (V3.y unit_dir +. 1.) in
-        let t_1 = 1. -. t in
-        let light_blue = V3.v 0.5 0.7 1. in
-        let one = V3.v 1. 1. 1. in
-        V3.add (V3.smul t_1 one) (V3.smul t light_blue)
+        V3.add (V3.smul (1. -. t) (V3.v 1. 1. 1.)) (V3.smul t (V3.v 0.5 0.7 1.))
   in
   let write_ppm ~w ~h =
     let j = ref (h - 1) in
