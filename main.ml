@@ -1,14 +1,34 @@
 open Gg
 
-type ray_t = {o: Gg.V3.t; dir: Gg.V3.t}
-
-let ray_at r t = V3.add r.o (V3.smul t r.dir)
-
 type color_t = V3.t
 
 type point_t = V3.t
 
-let make_ray o (dir : Gg.V3.t) = {o; dir}
+type ray_t = {o: point_t; dir: point_t}
+
+let ray_at r t = V3.add r.o (V3.smul t r.dir)
+
+type sphere_t = {center: point_t; radius: float}
+
+let sphere_make center radius = {center; radius}
+
+type hit_record = {p: point_t; normal: point_t; t: float; is_front: bool}
+
+(* let radians_of_degree deg = deg *. Float.pi /. 180. *)
+
+let sphere_outward_normal self p =
+  V3.smul (1. /. self.radius) (V3.sub p self.center)
+
+let hit_record_sphere r root sphere =
+  let p = ray_at r root in
+  let outward_normal = sphere_outward_normal sphere p in
+  let is_front = V3.dot r.dir outward_normal < 0. in
+  let normal =
+    if is_front then outward_normal else V3.smul (-1.) outward_normal
+  in
+  {p; t= 0.; normal; is_front}
+
+let make_ray o (dir : point_t) = {o; dir}
 
 let () =
   let module V3 = Gg.V3 in
@@ -25,6 +45,10 @@ let () =
   let neg_half_v = V3.(smul (-0.5) vertical) in
   let neg_half_h = V3.(smul (-0.5) horizontal) in
   let v_focal_len = V3.v 0. 0. (-.focal_len) in
+  let world =
+    [ sphere_make (V3.v 0. 0. (-1.)) 0.5
+    ; sphere_make (V3.v 0. (-100.5) (-1.)) 100. ]
+  in
   let low_left = V3.(add o (add neg_half_h (add neg_half_v v_focal_len))) in
   let write_color (c : color_t) : unit =
     let r = Float.to_int (255.999 *. V3.x c) in
@@ -32,26 +56,43 @@ let () =
     let b = Float.to_int (255.999 *. V3.z c) in
     Printf.printf "%i %i %i\n" r g b
   in
-  let hit_sphere (center : point_t) (radius : float) (r : ray_t) =
-    let oc = V3.add o (V3.smul (-1.) center) in
+  let hit_sphere self (r : ray_t) t_min t_max =
+    let oc = V3.sub o self.center in
     let a = V3.norm2 r.dir in
     let half_b = V3.dot oc r.dir in
-    let c = V3.norm2 oc -. (radius *. radius) in
+    let c = V3.norm2 oc -. (self.radius *. self.radius) in
     let discriminant = (half_b *. half_b) -. (a *. c) in
-    if discriminant < 0. then -1. else (-.half_b -. sqrt discriminant) /. a
+    if discriminant < 0. then None
+    else
+      let sqrd = sqrt discriminant in
+      let root_1 = (-.half_b -. sqrd) /. a in
+      let root_2 = (-.half_b +. sqrd) /. a in
+      let root = if root_1 < t_min || t_max < root_1 then root_2 else root_1 in
+      if root < t_min || t_max < root then None
+      else Some (hit_record_sphere r root self)
   in
-  let ray_color (r : ray_t) : color_t =
-    let center = V3.v 0. 0. (-1.) in
-    let radius = 0.5 in
-    match hit_sphere center radius r with
-    | t when t >= 0. ->
-        let n = V3.unit (V3.sub (ray_at r t) (V3.v 0. 0. (-1.))) in
-        let c = V3.v (V3.x n +. 1.) (V3.y n +. 1.) (V3.z n +. 1.) in
-        V3.smul 0.5 c
-    | _ ->
+  let world_hit world (r : ray_t) ~t_min ~t_max =
+    let rec _loop l ~(closest : float) out_rec =
+      match l with
+      | x :: tail -> (
+        match hit_sphere x r t_min closest with
+        | Some a as temp_rec ->
+            _loop tail ~closest:a.t temp_rec
+        | None ->
+            _loop tail ~closest out_rec )
+      | [] ->
+          out_rec
+    in
+    _loop world ~closest:t_max None
+  in
+  let ray_color (r : ray_t) world : color_t =
+    match world_hit world r ~t_min:0. ~t_max:infinity with
+    | Some rr ->
+        V3.smul 0.8 (V3.add rr.normal (V3.v 1. 1. 1.))
+    | None ->
         let unit_dir = V3.unit r.dir in
         let t = 0.5 *. (V3.y unit_dir +. 1.) in
-        V3.add (V3.smul (1. -. t) (V3.v 1. 1. 1.)) (V3.smul t (V3.v 0.5 0.7 1.))
+        V3.add (V3.smul (1. -. t) (V3.v 1. 1. 1.)) (V3.smul t (V3.v 0.5 0.5 1.))
   in
   let write_ppm ~w ~h =
     let j = ref (h - 1) in
@@ -67,7 +108,7 @@ let () =
         let uv_plus_uh = V3.add uh uv in
         let low_left_minus_o = V3.add low_left (V3.smul (-1.) o) in
         let ray = make_ray o (V3.add low_left_minus_o uv_plus_uh) in
-        let c = ray_color ray in
+        let c = ray_color ray world in
         write_color c ;
         i := !i + 1
       done ;
