@@ -42,7 +42,7 @@ let random_vec3_in_hemisphere normal =
 
 type diffuse_material = {albedo: color_t}
 
-type metal_material = {albedo: color_t}
+type metal_material = {albedo: color_t; fuzz: float}
 
 let near_zero v =
   let s = 1e-8 in
@@ -62,7 +62,10 @@ let diffuse_scatter (self : diffuse_material) ~p ~normal =
 
 let metal_scatter (self : metal_material) ray_in ~p ~normal =
   let reflected = reflect (V3.unit ray_in.dir) normal in
-  let scattered = ray_make p reflected in
+  let scattered =
+    ray_make p
+      (V3.add reflected (V3.smul self.fuzz (random_vec3_in_unit_sphere ())))
+  in
   if V3.dot scattered.dir normal > 0. then Some (scattered, self.albedo)
   else None
 
@@ -125,8 +128,8 @@ let () =
   Dolog.Log.(set_log_level INFO) ;
   let mat_ground = Diffuse {albedo= V3.v 0.8 0.8 0.} in
   let mat_center = Diffuse {albedo= V3.v 0.7 0.3 0.3} in
-  let mat_left = Metallic {albedo= V3.v 0.8 0.8 0.8} in
-  let mat_right = Metallic {albedo= V3.v 0.8 0.6 0.2} in
+  let mat_left = Metallic {albedo= V3.v 0.8 0.8 0.8; fuzz= 0.3} in
+  let mat_right = Metallic {albedo= V3.v 0.8 0.6 0.2; fuzz= 0.} in
   let cam = camera_make () in
   let w, h = (400, Float.trunc (400. /. cam.aspect_ratio) |> Float.to_int) in
   let n_samples = 16 in
@@ -175,15 +178,14 @@ let () =
   in
   let max_depth = 24 in
   let rec ray_color (r : ray_t) world depth : color_t =
-    if depth <= 0 then (V3.v 0.5 0.5 0.5)
+    if depth <= 0 then V3.v 0.5 0.5 0.5
     else
       match world_hit world r ~t_min:0.001 ~t_max:infinity with
       | Some rr -> (
         (* Dolog.Log.warn "hit!" ; *)
         match scatter rr.mat r ~p:rr.p ~normal:rr.normal with
         | None ->
-            V3.zero
-            (* (V3.v 0.5 1. 0.5) *)
+            V3.zero (* (V3.v 0.5 1. 0.5) *)
         | Some (scattered, albedo) ->
             V3.mul albedo (ray_color scattered world (depth - 1)) )
       | None ->
