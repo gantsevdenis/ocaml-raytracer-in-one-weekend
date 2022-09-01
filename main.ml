@@ -44,12 +44,22 @@ type diffuse_material = {albedo: color_t}
 
 type metal_material = {albedo: color_t; fuzz: float}
 
+type dielectric_material = {ir: float}
+
 let near_zero v =
   let s = 1e-8 in
   let fabs = abs_float in
   fabs (V3.x v) < s && fabs (V3.y v) < s && fabs (V3.z v) < s
 
 let reflect v n = V3.sub v (V3.smul (2. *. V3.dot v n) n)
+
+let refract uv n etai_over_etat =
+  let cos_theta = min (V3.dot (V3.smul (-1.) uv) n) 1. in
+  let r_out_perp = V3.smul etai_over_etat (V3.add uv (V3.smul cos_theta n)) in
+  let r_out_parall =
+    V3.smul (-.sqrt (abs_float (1. -. V3.norm2 r_out_perp))) n
+  in
+  V3.add r_out_parall r_out_perp
 
 let diffuse_scatter (self : diffuse_material) ~p ~normal =
   let scatter_direction = V3.add normal (random_vec3_unit_vec ()) in
@@ -69,14 +79,27 @@ let metal_scatter (self : metal_material) ray_in ~p ~normal =
   if V3.dot scattered.dir normal > 0. then Some (scattered, self.albedo)
   else None
 
-type material_t = Diffuse of diffuse_material | Metallic of metal_material
+let dielectric_scatter self ray_in front ~p ~normal =
+  let c = V3.v 1. 1. 1. in
+  let refraction_ratio = if front then 1. /. self.ir else self.ir in
+  let unit_dir = V3.unit ray_in.dir in
+  let refracted = refract unit_dir normal refraction_ratio in
+  let scattered = ray_make p refracted in
+  Some (scattered, c)
 
-let scatter m ray ~p ~normal =
+type material_t =
+  | Diffuse of diffuse_material
+  | Metallic of metal_material
+  | Dielectric of dielectric_material
+
+let scatter m ray front ~p ~normal =
   match m with
   | Diffuse m' ->
       diffuse_scatter m' ~p ~normal
   | Metallic m' ->
       metal_scatter m' ray ~p ~normal
+  | Dielectric m' ->
+      dielectric_scatter m' ray front ~p ~normal
 
 type sphere_t = {center: point_t; radius: float; mat: material_t}
 
@@ -127,7 +150,7 @@ let () =
   Dolog.Log.set_output stderr ;
   Dolog.Log.(set_log_level INFO) ;
   let mat_ground = Diffuse {albedo= V3.v 0.8 0.8 0.} in
-  let mat_center = Diffuse {albedo= V3.v 0.7 0.3 0.3} in
+  let mat_center = Dielectric {ir= 1.3} in
   let mat_left = Metallic {albedo= V3.v 0.8 0.8 0.8; fuzz= 0.3} in
   let mat_right = Metallic {albedo= V3.v 0.8 0.6 0.2; fuzz= 0.} in
   let cam = camera_make () in
@@ -183,7 +206,7 @@ let () =
       match world_hit world r ~t_min:0.001 ~t_max:infinity with
       | Some rr -> (
         (* Dolog.Log.warn "hit!" ; *)
-        match scatter rr.mat r ~p:rr.p ~normal:rr.normal with
+        match scatter rr.mat r rr.is_front ~p:rr.p ~normal:rr.normal with
         | None ->
             V3.zero (* (V3.v 0.5 1. 0.5) *)
         | Some (scattered, albedo) ->
