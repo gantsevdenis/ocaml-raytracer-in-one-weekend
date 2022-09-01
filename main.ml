@@ -34,6 +34,13 @@ let random_vec3_in_unit_sphere () =
 
 let random_vec3_unit_vec () = V3.unit (random_vec3_in_unit_sphere ())
 
+let random_vec3_in_hemisphere normal =
+  let in_unit_sphere = random_vec3_in_unit_sphere () in
+  if V3.dot in_unit_sphere normal > 0. then
+    (* same hemisphere as the normal *)
+    normal
+  else V3.smul (-1.) normal
+
 let camera_make () =
   let aspect_ratio = 16.0 /. 9.0 in
   (* let w, h = (400, Float.trunc (400. /. aspect_ratio) |> Float.to_int) in *)
@@ -70,6 +77,9 @@ let hit_record_sphere r root sphere =
   {p; t= 0.; normal; is_front}
 
 let () =
+  (* make compiler happy *)
+  ignore random_vec3_unit_vec ;
+  ignore random_vec3_in_hemisphere ;
   let module V3 = Gg.V3 in
   Dolog.Log.set_output stderr ;
   Dolog.Log.(set_log_level INFO) ;
@@ -126,7 +136,7 @@ let () =
       | Some rr ->
           (* Dolog.Log.warn "hit!" ; *)
           let target =
-            V3.add rr.p (V3.add (random_vec3_unit_vec ()) rr.normal)
+            V3.add rr.p (V3.add (random_vec3_in_hemisphere rr.normal) rr.normal)
           in
           let child_ray = ray_make rr.p (V3.sub target rr.p) in
           V3.smul 0.5 (ray_color child_ray world (depth - 1))
@@ -135,7 +145,7 @@ let () =
           let t = 0.5 *. (V3.y unit_dir +. 1.) in
           V3.add
             (V3.smul (1. -. t) (V3.v 1. 1. 1.))
-            (V3.smul t (V3.v 0.5 0.5 1.))
+            (V3.smul t (V3.v 0.5 0.7 1.))
   in
   let random_double () = Random.float 1. in
   let write_ppm ~w ~h =
