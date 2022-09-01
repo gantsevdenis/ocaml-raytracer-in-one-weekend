@@ -18,6 +18,20 @@ type hit_record = {p: point_t; normal: point_t; t: float; is_front: bool}
 
 type camera_t = {o: point_t; low_left: point_t; hor: point_t; ver: point_t}
 
+let random_float min_ max_ = min_ +. ((max_ -. min_) *. Random.float 0.99999)
+
+let random_vec3 min_ max_ =
+  let a = random_float min_ max_ in
+  let b = random_float min_ max_ in
+  let c = random_float min_ max_ in
+  V3.v a b c
+
+let random_vec3_in_unit_sphere () =
+  let rec _loop vec =
+    if V3.norm2 vec >= 1. then _loop (random_vec3 (-1.) 1.) else vec
+  in
+  _loop (random_vec3 (-1.) 1.)
+
 let camera_make () =
   let aspect_ratio = 16.0 /. 9.0 in
   (* let w, h = (400, Float.trunc (400. /. aspect_ratio) |> Float.to_int) in *)
@@ -66,10 +80,11 @@ let () =
     ; sphere_make (V3.v 0. (-100.5) (-1.)) 100. ]
   in
   let write_color (c : color_t) (n_samples : int) : unit =
+    (* gamma-corerct for gamma=2.0, sqrt *)
     let scale = 1. /. (n_samples |> Float.of_int) in
-    let r = clamp (V3.x c *. scale) 0. 0.999 *. 256. |> Float.to_int in
-    let g = clamp (V3.y c *. scale) 0. 0.999 *. 256. |> Float.to_int in
-    let b = clamp (V3.z c *. scale) 0. 0.999 *. 256. |> Float.to_int in
+    let r = clamp (V3.x c *. scale |> sqrt) 0. 0.999 *. 256. |> Float.to_int in
+    let g = clamp (V3.y c *. scale |> sqrt) 0. 0.999 *. 256. |> Float.to_int in
+    let b = clamp (V3.z c *. scale |> sqrt) 0. 0.999 *. 256. |> Float.to_int in
     Printf.printf "%i %i %i\n" r g b
   in
   let hit_sphere self (r : ray_t) t_min t_max =
@@ -101,15 +116,24 @@ let () =
     in
     _loop world ~closest:t_max None
   in
-  let ray_color (r : ray_t) world : color_t =
-    match world_hit world r ~t_min:0. ~t_max:infinity with
-    | Some rr ->
-        (* Dolog.Log.warn "hit!" ; *)
-        V3.smul 0.8 (V3.add rr.normal (V3.v 1. 1. 1.))
-    | None ->
-        let unit_dir = V3.unit r.dir in
-        let t = 0.5 *. (V3.y unit_dir +. 1.) in
-        V3.add (V3.smul (1. -. t) (V3.v 1. 1. 1.)) (V3.smul t (V3.v 0.5 0.5 1.))
+  let max_depth = 8 in
+  let rec ray_color (r : ray_t) world depth : color_t =
+    if depth <= 0 then V3.zero
+    else
+      match world_hit world r ~t_min:0. ~t_max:infinity with
+      | Some rr ->
+          (* Dolog.Log.warn "hit!" ; *)
+          let target =
+            V3.add rr.p (V3.add (random_vec3_in_unit_sphere ()) rr.normal)
+          in
+          let child_ray = ray_make rr.p (V3.sub target rr.p) in
+          V3.smul 0.8 (ray_color child_ray world (depth - 1))
+      | None ->
+          let unit_dir = V3.unit r.dir in
+          let t = 0.5 *. (V3.y unit_dir +. 1.) in
+          V3.add
+            (V3.smul (1. -. t) (V3.v 1. 1. 1.))
+            (V3.smul t (V3.v 0.5 0.5 1.))
   in
   let random_double () = Random.float 1. in
   let write_ppm ~w ~h =
@@ -128,7 +152,7 @@ let () =
             (Float.of_int !j +. random_double ()) /. Float.of_int (h - 1)
           in
           let ray = camera_get_ray cam u v in
-          c := V3.add !c (ray_color ray world)
+          c := V3.add !c (ray_color ray world max_depth)
         done ;
         (* Dolog.Log.warn "color %f %f %f" (V3.x !c) (V3.y !c) (V3.z !c) ; *)
         write_color !c n_samples ;
