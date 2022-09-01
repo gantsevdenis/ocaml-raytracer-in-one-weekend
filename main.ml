@@ -80,11 +80,18 @@ let metal_scatter (self : metal_material) ray_in ~p ~normal =
   else None
 
 let dielectric_scatter self ray_in front ~p ~normal =
+  (* glass surface absorbs nothing *)
   let c = V3.v 1. 1. 1. in
   let refraction_ratio = if front then 1. /. self.ir else self.ir in
   let unit_dir = V3.unit ray_in.dir in
-  let refracted = refract unit_dir normal refraction_ratio in
-  let scattered = ray_make p refracted in
+  let cos_theta = min (V3.dot (V3.smul (-1.) unit_dir) normal) 1. in
+  let sin_theta = sqrt (1. -. (cos_theta *. cos_theta)) in
+  let cannot_refract = refraction_ratio *. sin_theta > 1.0 in
+  let direction =
+    if cannot_refract then reflect unit_dir normal
+    else refract unit_dir normal refraction_ratio
+  in
+  let scattered = ray_make p direction in
   Some (scattered, c)
 
 type material_t =
@@ -151,7 +158,7 @@ let () =
   Dolog.Log.(set_log_level INFO) ;
   let mat_ground = Diffuse {albedo= V3.v 0.8 0.8 0.} in
   let mat_center = Dielectric {ir= 1.3} in
-  let mat_left = Metallic {albedo= V3.v 0.8 0.8 0.8; fuzz= 0.3} in
+  let mat_left = Diffuse {albedo= V3.v 0.1 0.2 0.5} in
   let mat_right = Metallic {albedo= V3.v 0.8 0.6 0.2; fuzz= 0.} in
   let cam = camera_make () in
   let w, h = (400, Float.trunc (400. /. cam.aspect_ratio) |> Float.to_int) in
@@ -199,7 +206,7 @@ let () =
     in
     _loop world ~closest:t_max None
   in
-  let max_depth = 24 in
+  let max_depth = 32 in
   let rec ray_color (r : ray_t) world depth : color_t =
     if depth <= 0 then V3.v 0.5 0.5 0.5
     else
