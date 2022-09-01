@@ -32,6 +32,8 @@ let random_vec3_in_unit_sphere () =
   in
   _loop (random_vec3 (-1.) 1.)
 
+let random_vec3_unit_vec () = V3.unit (random_vec3_in_unit_sphere ())
+
 let camera_make () =
   let aspect_ratio = 16.0 /. 9.0 in
   (* let w, h = (400, Float.trunc (400. /. aspect_ratio) |> Float.to_int) in *)
@@ -120,14 +122,14 @@ let () =
   let rec ray_color (r : ray_t) world depth : color_t =
     if depth <= 0 then V3.zero
     else
-      match world_hit world r ~t_min:0. ~t_max:infinity with
+      match world_hit world r ~t_min:0.001 ~t_max:infinity with
       | Some rr ->
           (* Dolog.Log.warn "hit!" ; *)
           let target =
-            V3.add rr.p (V3.add (random_vec3_in_unit_sphere ()) rr.normal)
+            V3.add rr.p (V3.add (random_vec3_unit_vec ()) rr.normal)
           in
           let child_ray = ray_make rr.p (V3.sub target rr.p) in
-          V3.smul 0.8 (ray_color child_ray world (depth - 1))
+          V3.smul 0.5 (ray_color child_ray world (depth - 1))
       | None ->
           let unit_dir = V3.unit r.dir in
           let t = 0.5 *. (V3.y unit_dir +. 1.) in
