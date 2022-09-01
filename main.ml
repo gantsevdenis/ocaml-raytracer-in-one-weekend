@@ -19,6 +19,8 @@ type camera_t =
 
 let random_float min_ max_ = min_ +. ((max_ -. min_) *. Random.float 0.99999)
 
+let random_float_1_1 () = random_float (-1.) 1.
+
 let random_vec3 min_ max_ =
   let a = random_float min_ max_ in
   let b = random_float min_ max_ in
@@ -79,6 +81,12 @@ let metal_scatter (self : metal_material) ray_in ~p ~normal =
   if V3.dot scattered.dir normal > 0. then Some (scattered, self.albedo)
   else None
 
+let reflectance cosine ref_idx =
+  (* Use Schlick's approximation for reflectance *)
+  let r0 = (1. -. ref_idx) /. (1. +. ref_idx) in
+  let r0 = r0 *. r0 in
+  r0 +. ((1. -. r0) *. Float.pow (1. -. cosine) 5.)
+
 let dielectric_scatter self ray_in front ~p ~normal =
   (* glass surface absorbs nothing *)
   let c = V3.v 1. 1. 1. in
@@ -88,7 +96,10 @@ let dielectric_scatter self ray_in front ~p ~normal =
   let sin_theta = sqrt (1. -. (cos_theta *. cos_theta)) in
   let cannot_refract = refraction_ratio *. sin_theta > 1.0 in
   let direction =
-    if cannot_refract then reflect unit_dir normal
+    if
+      cannot_refract
+      || reflectance cos_theta refraction_ratio > random_float_1_1 ()
+    then reflect unit_dir normal
     else refract unit_dir normal refraction_ratio
   in
   let scattered = ray_make p direction in
@@ -162,11 +173,13 @@ let () =
   let mat_right = Metallic {albedo= V3.v 0.8 0.6 0.2; fuzz= 0.} in
   let cam = camera_make () in
   let w, h = (400, Float.trunc (400. /. cam.aspect_ratio) |> Float.to_int) in
-  let n_samples = 16 in
+  let n_samples = 8 in
   let world =
     [ sphere_make (V3.v 0. (-100.5) (-1.)) 100. mat_ground
     ; sphere_make (V3.v 0. 0. (-1.)) 0.5 mat_center
     ; sphere_make (V3.v (-1.) 0. (-1.)) 0.5 mat_left
+    ; (* make a hollow sphere *)
+      sphere_make (V3.v (-1.) 0. (-1.)) (-0.4) mat_left
     ; sphere_make (V3.v 1. 0. (-1.)) 0.5 mat_right ]
   in
   let write_color (c : color_t) (n_samples : int) : unit =
