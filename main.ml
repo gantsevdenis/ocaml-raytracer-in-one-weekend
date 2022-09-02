@@ -125,23 +125,24 @@ let sphere_make center radius mat = {center; radius; mat}
 
 let radians_of_degree deg = deg *. Float.pi /. 180.
 
-let camera_make vfov aspect_ratio =
+let camera_make ~from ~at ~up vfov aspect_ratio =
   let theta = radians_of_degree vfov in
   let h = tan (theta /. 2.) in
   let viewport_h = 2. *. h in
   let viewport_w = aspect_ratio *. viewport_h in
-  let focal_len = 1. in
-  let o = V3.zero in
-  let hor = V3.v viewport_w 0. 0. in
-  let ver = V3.v 0. viewport_h 0. in
-  let neg_half_v = V3.(smul (-0.5) ver) in
-  let neg_half_h = V3.(smul (-0.5) hor) in
-  let v_focal_len = V3.v 0. 0. (-.focal_len) in
-  let low_left = V3.(add o (add neg_half_h (add neg_half_v v_focal_len))) in
+  let w = V3.unit (V3.sub from at) in
+  let u = V3.unit (V3.cross up w) in
+  let v = V3.cross w u in
+  let o = from in
+  let hor = V3.smul viewport_w u in
+  let ver = V3.smul viewport_h v in
+  let ( -- ) = V3.sub in
+  let ( $ ) = V3.smul in
+  let low_left = o -- (0.5 $ hor) -- (0.5 $ ver) -- w in
   {o; low_left; hor; ver; aspect_ratio}
 
-let camera_get_ray self u v =
-  let sum_basis = V3.add (V3.smul u self.hor) (V3.smul v self.ver) in
+let camera_get_ray self s t =
+  let sum_basis = V3.add (V3.smul s self.hor) (V3.smul t self.ver) in
   let sum_basis_o = V3.sub sum_basis self.o in
   ray_make self.o (V3.add self.low_left sum_basis_o)
 
@@ -173,7 +174,10 @@ let () =
   let mat_center = Dielectric {ir= 1.3} in
   let mat_left = Diffuse {albedo= V3.v 0.1 0.2 0.5} in
   let mat_right = Metallic {albedo= V3.v 0.8 0.6 0.2; fuzz= 0.} in
-  let cam = camera_make 45.0 (16. /. 9.) in
+  let from = V3.v (-2.) 2. (1.) in
+  let at = V3.v 0. 0. (-1.) in
+  let up = V3.v 0. 1. 0. in
+  let cam = camera_make ~from ~at ~up 45.0 (16. /. 9.) in
   let w = 400 in
   let h = Float.trunc (Float.of_int w /. cam.aspect_ratio) |> Float.to_int in
   let n_samples = 8 in
@@ -182,7 +186,7 @@ let () =
     ; sphere_make (V3.v 0. 0. (-1.)) 0.5 mat_center
     ; sphere_make (V3.v (-1.) 0. (-1.)) 0.5 mat_left
     ; (* make a hollow sphere *)
-      sphere_make (V3.v (-1.) 0. (-1.)) (-0.4) mat_left
+      sphere_make (V3.v (-1.) 0. (-1.)) (-0.45) mat_left
     ; sphere_make (V3.v 1. 0. (-1.)) 0.5 mat_right ]
   in
   let write_color (c : color_t) (n_samples : int) : unit =
