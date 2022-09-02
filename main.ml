@@ -15,7 +15,11 @@ type camera_t =
   ; low_left: point_t
   ; hor: point_t
   ; ver: point_t
-  ; aspect_ratio: float }
+  ; aspect_ratio: float
+  ; lens_radius: float
+  ; u: point_t
+  ; v: point_t
+  ; w: point_t }
 
 let random_float min_ max_ = min_ +. ((max_ -. min_) *. Random.float 0.99999)
 
@@ -41,6 +45,14 @@ let random_vec3_in_hemisphere normal =
     (* same hemisphere as the normal *)
     normal
   else V3.smul (-1.) normal
+
+let random_in_unit_disk () =
+  let rec _loop vec =
+    if V3.norm2 vec >= 1. then
+      _loop (V3.v (random_float_1_1 ()) (random_float_1_1 ()) 0.)
+    else vec
+  in
+  _loop (V3.v (random_float_1_1 ()) (random_float_1_1 ()) 0.)
 
 type diffuse_material = {albedo: color_t}
 
@@ -125,7 +137,7 @@ let sphere_make center radius mat = {center; radius; mat}
 
 let radians_of_degree deg = deg *. Float.pi /. 180.
 
-let camera_make ~from ~at ~up vfov aspect_ratio =
+let camera_make ~from ~at ~up vfov ~aspect_ratio ~aperture ~focus_dist =
   let theta = radians_of_degree vfov in
   let h = tan (theta /. 2.) in
   let viewport_h = 2. *. h in
@@ -134,17 +146,22 @@ let camera_make ~from ~at ~up vfov aspect_ratio =
   let u = V3.unit (V3.cross up w) in
   let v = V3.cross w u in
   let o = from in
-  let hor = V3.smul viewport_w u in
-  let ver = V3.smul viewport_h v in
   let ( -- ) = V3.sub in
   let ( $ ) = V3.smul in
-  let low_left = o -- (0.5 $ hor) -- (0.5 $ ver) -- w in
-  {o; low_left; hor; ver; aspect_ratio}
+  let hor = focus_dist *. viewport_w $ u in
+  let ver = focus_dist *. viewport_h $ v in
+  let low_left = o -- (0.5 $ hor) -- (0.5 $ ver) -- (focus_dist $ w) in
+  let lens_radius = aperture /. 2. in
+  {o; low_left; hor; ver; aspect_ratio; u; v; w; lens_radius}
 
 let camera_get_ray self s t =
-  let sum_basis = V3.add (V3.smul s self.hor) (V3.smul t self.ver) in
-  let sum_basis_o = V3.sub sum_basis self.o in
-  ray_make self.o (V3.add self.low_left sum_basis_o)
+  let ( -- ) = V3.sub in
+  let ( ++ ) = V3.add in
+  let ( $ ) = V3.smul in
+  let rd = self.lens_radius $ random_in_unit_disk () in
+  let offset = V3.((x rd $ self.u) ++ (y rd $ self.v)) in
+  let sum_basis = (s $ self.hor) ++ (t $ self.ver) in
+  ray_make (self.o ++ offset) (self.low_left ++ sum_basis -- self.o -- offset)
 
 let clamp (x : float) min_ max_ = max (min x max_) min_
 
@@ -174,10 +191,15 @@ let () =
   let mat_center = Dielectric {ir= 1.3} in
   let mat_left = Diffuse {albedo= V3.v 0.1 0.2 0.5} in
   let mat_right = Metallic {albedo= V3.v 0.8 0.6 0.2; fuzz= 0.} in
-  let from = V3.v (-2.) 2. (1.) in
+  let from = V3.v (-2.) 2. 1. in
   let at = V3.v 0. 0. (-1.) in
   let up = V3.v 0. 1. 0. in
-  let cam = camera_make ~from ~at ~up 45.0 (16. /. 9.) in
+  let aperture = 2. in
+  let focus_dist = V3.(norm (sub from at)) in
+  let aspect_ratio = 16. /. 9. in
+  let cam =
+    camera_make ~from ~at ~up 45.0 ~aspect_ratio ~aperture ~focus_dist
+  in
   let w = 400 in
   let h = Float.trunc (Float.of_int w /. cam.aspect_ratio) |> Float.to_int in
   let n_samples = 8 in
