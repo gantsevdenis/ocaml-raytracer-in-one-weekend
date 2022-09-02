@@ -123,9 +123,12 @@ type sphere_t = {center: point_t; radius: float; mat: material_t}
 
 let sphere_make center radius mat = {center; radius; mat}
 
-let camera_make () =
-  let aspect_ratio = 16.0 /. 9.0 in
-  let viewport_h = 2. in
+let radians_of_degree deg = deg *. Float.pi /. 180.
+
+let camera_make vfov aspect_ratio =
+  let theta = radians_of_degree vfov in
+  let h = tan (theta /. 2.) in
+  let viewport_h = 2. *. h in
   let viewport_w = aspect_ratio *. viewport_h in
   let focal_len = 1. in
   let o = V3.zero in
@@ -142,7 +145,6 @@ let camera_get_ray self u v =
   let sum_basis_o = V3.sub sum_basis self.o in
   ray_make self.o (V3.add self.low_left sum_basis_o)
 
-(* let radians_of_degree deg = deg *. Float.pi /. 180. *)
 let clamp (x : float) min_ max_ = max (min x max_) min_
 
 let sphere_outward_normal self p =
@@ -171,8 +173,9 @@ let () =
   let mat_center = Dielectric {ir= 1.3} in
   let mat_left = Diffuse {albedo= V3.v 0.1 0.2 0.5} in
   let mat_right = Metallic {albedo= V3.v 0.8 0.6 0.2; fuzz= 0.} in
-  let cam = camera_make () in
-  let w, h = (400, Float.trunc (400. /. cam.aspect_ratio) |> Float.to_int) in
+  let cam = camera_make 45.0 (16. /. 9.) in
+  let w = 400 in
+  let h = Float.trunc (Float.of_int w /. cam.aspect_ratio) |> Float.to_int in
   let n_samples = 8 in
   let world =
     [ sphere_make (V3.v 0. (-100.5) (-1.)) 100. mat_ground
